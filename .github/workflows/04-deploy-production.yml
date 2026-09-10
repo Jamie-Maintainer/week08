@@ -1,17 +1,26 @@
 name: 04 - Deploy to Production
 
 on:
-  workflow_dispatch:
-    inputs:
-      image_tag:
-        description: "Tested image SHA to deploy"
-        required: true
-        type: string
+  workflow_run:
+    workflows:
+      - "03 - Test Staging"
+    types:
+      - completed
+    branches:
+      - main
+  # workflow_dispatch:
+  #   inputs:
+  #     image_tag:
+  #       description: "Tested image SHA to deploy"
+  #       required: true
+  #       type: string
 
 jobs:
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
+    if: >
+      ${{ github.event.workflow_run.conclusion == 'success' }}
 
     environment:
       name: production
@@ -31,6 +40,14 @@ jobs:
             --resource-group ${{ vars.AKS_RESOURCE_GROUP }} \
             --name ${{ vars.AKS_CLUSTER_NAME }} \
             --overwrite-existing
+      - name: Get tested image tag from staging
+        run: |
+          IMAGE=$(kubectl get deployment frontend \
+            -n staging \
+            -o jsonpath='{.spec.template.spec.containers[0].image}')
+          image_tag="${IMAGE##*:}"
+          echo "Tested image tag: $image_tag"
+          echo "image_tag=$image_tag" >> "$GITHUB_ENV"
 
       - name: Create production namespace
         run: |
