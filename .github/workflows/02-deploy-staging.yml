@@ -172,14 +172,14 @@ jobs:
       - name: Wait for Prometheus
         run: |
           kubectl rollout status \
-            deployment/monitoring-kube-prometheus-operator \
+            deployment/prometheus-kube-prometheus-operator \
             -n monitoring \
             --timeout=300s
 
       - name: Wait for Grafana
         run: |
           kubectl rollout status \
-            deployment/monitoring-grafana \
+            deployment/prometheus-grafana \
             -n monitoring \
             --timeout=300s
 
