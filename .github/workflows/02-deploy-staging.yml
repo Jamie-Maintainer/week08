@@ -60,12 +60,7 @@ jobs:
           
       - name: Deploy Prometheus and Grafana
         run: |
-          helm upgrade --install
-            prometheus prometheus-community/kube-prometheus-stack \
-            --namespace monitoring \
-            --create-namespace \
-            --wait \
-            --timeout 10m
+          helm install prometheus prometheus-community/kube-prometheus-stack -n monitoring --create-namespace --wait --timeout 10m
           
 
       - name: Create staging namespace
