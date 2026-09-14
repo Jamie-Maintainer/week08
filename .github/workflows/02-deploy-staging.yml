@@ -1,21 +1,28 @@
 name: 02 - Deploy to Staging
 
 on:
-  workflow_run:
-    workflows:
-      - "01 - CI"
-    types:
-      - completed
-    branches:
-      - main
+  # workflow_run:
+  #   workflows:
+  #     - "01 - CI"
+  #   types:
+  #     - completed
+  #   branches:
+  #     - main
+
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tested image SHA to deploy"
+        required: true
+        type: string
 
 jobs:
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
 
-    if: >
-      ${{ github.event.workflow_run.conclusion == 'success' }}
+    # if: >
+    #   ${{ github.event.workflow_run.conclusion == 'success' }}
 
     environment:
       name: staging
@@ -23,8 +30,8 @@ jobs:
     steps:
       - name: Checkout tested commit
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+        # with:
+        #   ref: ${{ inputs.image_tag }}
 
       - name: Login to Azure
         uses: azure/login@v3
@@ -37,6 +44,29 @@ jobs:
             --resource-group ${{ vars.AKS_RESOURCE_GROUP }} \
             --name ${{ vars.AKS_CLUSTER_NAME }} \
             --overwrite-existing
+
+      - name: Enable the Azure Monitoring
+        run: |
+          az aks update --enable-azure-monitor-metrics --name ${{ vars.AKS_CLUSTER_NAME }} --resource-group ${{ vars.AKS_RESOURCE_GROUP }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Add Prometheus Helm repository
+        run: |
+          helm repo add prometheus-community \
+            https://prometheus-community.github.io/helm-charts
+          helm repo update
+          
+      - name: Deploy Prometheus and Grafana
+        run: |
+          helm upgrade --install
+            prometheus prometheus-community/kube-prometheus-stack \
+            --namespace monitoring \
+            --create-namespace \
+            --wait \
+            --timeout 10m
+          
 
       - name: Create staging namespace
         run: |
@@ -75,37 +105,37 @@ jobs:
       - name: Update frontend image
         run: |
           kubectl set image deployment/frontend \
-            frontend=${{ vars.ACR_LOGIN_SERVER }}/koalatech-frontend:${{ github.event.workflow_run.head_sha }} \
+            frontend=${{ vars.ACR_LOGIN_SERVER }}/koalatech-frontend:${{ inputs.image_tag }} \
             -n staging
 
       - name: Update user-service image
         run: |
           kubectl set image deployment/user-service \
-            user-service=${{ vars.ACR_LOGIN_SERVER }}/koalatech-user-service:${{ github.event.workflow_run.head_sha }} \
+            user-service=${{ vars.ACR_LOGIN_SERVER }}/koalatech-user-service:${{ inputs.image_tag }} \
             -n staging
 
       - name: Update student-service image
         run: |
           kubectl set image deployment/student-service \
-            student-service=${{ vars.ACR_LOGIN_SERVER }}/koalatech-student-service:${{ github.event.workflow_run.head_sha }} \
+            student-service=${{ vars.ACR_LOGIN_SERVER }}/koalatech-student-service:${{ inputs.image_tag }} \
             -n staging
 
       - name: Update lecturer-service image
         run: |
           kubectl set image deployment/lecturer-service \
-            lecturer-service=${{ vars.ACR_LOGIN_SERVER }}/koalatech-lecturer-service:${{ github.event.workflow_run.head_sha }} \
+            lecturer-service=${{ vars.ACR_LOGIN_SERVER }}/koalatech-lecturer-service:${{ inputs.image_tag }} \
             -n staging
 
       - name: Update course-service image
         run: |
           kubectl set image deployment/course-service \
-            course-service=${{ vars.ACR_LOGIN_SERVER }}/koalatech-course-service:${{ github.event.workflow_run.head_sha }} \
+            course-service=${{ vars.ACR_LOGIN_SERVER }}/koalatech-course-service:${{ inputs.image_tag }} \
             -n staging
 
       - name: Update enrollment-service image
         run: |
           kubectl set image deployment/enrollment-service \
-            enrollment-service=${{ vars.ACR_LOGIN_SERVER }}/koalatech-enrollment-service:${{ github.event.workflow_run.head_sha }} \
+            enrollment-service=${{ vars.ACR_LOGIN_SERVER }}/koalatech-enrollment-service:${{ inputs.image_tag }} \
             -n staging
 
       - name: Wait for frontend rollout
@@ -144,8 +174,24 @@ jobs:
             -n staging \
             --timeout=300s
 
+      - name: Wait for Prometheus
+        run: |
+          kubectl rollout status \
+            deployment/monitoring-kube-prometheus-operator \
+            -n monitoring \
+            --timeout=300s
+
+      - name: Wait for Grafana
+        run: |
+          kubectl rollout status \
+            deployment/monitoring-grafana \
+            -n monitoring \
+            --timeout=300s
+
       - name: Show staging resources
         run: |
           kubectl get pods -n staging
           kubectl get services -n staging
           kubectl get pvc -n staging
+          kubectl get pods -n monitoring
+          kubectl get svc -n monitoring

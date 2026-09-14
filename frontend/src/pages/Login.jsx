@@ -93,8 +93,7 @@ const Login = () => {
             variant="h4"
             gutterBottom
           >
-            KoalaTech University  - CD Demo
-            Version 9.3C - Automated Production Deployment
+            KoalaTech University
           </Typography>
 
           <Typography
